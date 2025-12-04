@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SubSentry - Subscription Tracker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        },
+                        accent: '#10b981',
+                        warning: '#f59e0b',
+                        danger: '#ef4444',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f0fdf4 100%);
+            min-height: 100vh;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #10b981 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .stat-card {
+            transition: all 0.3s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(59, 130, 246, 0.15);
+        }
+        .subscription-row {
+            transition: all 0.2s ease;
+        }
+        .subscription-row:hover {
+            background: rgba(59, 130, 246, 0.05);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px rgba(37, 99, 235, 0.3);
+        }
+        .input-focus:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 1; }
+            100% { transform: scale(1.3); opacity: 0; }
+        }
+        .notification-badge::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: inherit;
+            animation: pulse-ring 1.5s ease-out infinite;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // Category configurations
+        const CATEGORIES = {
+            entertainment: { name: 'Entertainment', icon: '🎬', color: 'bg-purple-500' },
+            software: { name: 'Software', icon: '💻', color: 'bg-blue-500' },
+            fitness: { name: 'Fitness', icon: '💪', color: 'bg-green-500' },
+            news: { name: 'News', icon: '📰', color: 'bg-orange-500' },
+            utilities: { name: 'Utilities', icon: '⚡', color: 'bg-yellow-500' },
+            other: { name: 'Other', icon: '📦', color: 'bg-gray-500' }
+        };
+
+        // Sample data
+        const SAMPLE_SUBSCRIPTIONS = [
+            { id: 1, name: 'Netflix', cost: 15.99, cycle: 'monthly', category: 'entertainment', renewalDate: '2024-12-15' },
+            { id: 2, name: 'Spotify', cost: 9.99, cycle: 'monthly', category: 'entertainment', renewalDate: '2024-12-10' },
+            { id: 3, name: 'Gym Membership', cost: 49.99, cycle: 'monthly', category: 'fitness', renewalDate: '2024-12-20' },
+            { id: 4, name: 'Adobe Creative Cloud', cost: 599.88, cycle: 'yearly', category: 'software', renewalDate: '2025-03-15' },
+            { id: 5, name: 'Disney+', cost: 7.99, cycle: 'monthly', category: 'entertainment', renewalDate: '2024-12-08' },
+        ];
+
+        // Auth Component
+        function AuthScreen({ onLogin }) {
+            const [isLogin, setIsLogin] = useState(true);
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [name, setName] = useState('');
+            const [error, setError] = useState('');
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                setError('');
+
+                if (!email || !password) {
+                    setError('Please fill in all fields');
+                    return;
+                }
+
+                if (!isLogin && !name) {
+                    setError('Please enter your name');
+                    return;
+                }
+
+                if (password.length < 8) {
+                    setError('Password must be at least 8 characters');
+                    return;
+                }
+
+                // Simulate auth
+                const user = { email, name: name || email.split('@')[0] };
+                localStorage.setItem('subsentry_user', JSON.stringify(user));
+                onLogin(user);
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4">
+                    <div className="w-full max-w-md">
+                        <div className="text-center mb-8 animate-fade-in">
+                            <h1 className="font-display text-4xl font-bold gradient-text mb-2">SubSentry</h1>
+                            <p className="text-gray-600">Take control of your subscriptions</p>
+                        </div>
+                        
+                        <div className="glass-card rounded-2xl p-8 shadow-xl animate-fade-in" style={{animationDelay: '0.1s'}}>
+                            <h2 className="text-2xl font-semibold text-gray-800 mb-6 text-center">
+                                {isLogin ? 'Welcome Back' : 'Create Account'}
+                            </h2>
+                            
+                            {error && (
+                                <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg mb-4 text-sm">
+                                    {error}
+                                </div>
+                            )}
+                            
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                                {!isLogin && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                                        <input
+                                            type="text"
+                                            value={name}
+                                            onChange={(e) => setName(e.target.value)}
+                                            className="w-full px-4 py-3 rounded-lg border border-gray-200 input-focus focus:outline-none"
+                                            placeholder="John Doe"
+                                        />
+                                    </div>
+                                )}
+                                
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                    <input
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className="w-full px-4 py-3 rounded-lg border border-gray-200 input-focus focus:outline-none"
+                                        placeholder="you@example.com"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                                    <input
+                                        type="password"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full px-4 py-3 rounded-lg border border-gray-200 input-focus focus:outline-none"
+                                        placeholder="••••••••"
+                                    />
+                                </div>
+                                
+                                <button
+                                    type="submit"
+                                    className="w-full btn-primary text-white font-semibold py-3 rounded-lg"
+                                >
+                                    {isLogin ? 'Sign In' : 'Create Account'}
+                                </button>
+                            </form>
+                            
+                            <div className="mt-6 text-center">
+                                <button
+                                    onClick={() => setIsLogin(!isLogin)}
+                                    className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+                                >
+                                    {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Add/Edit Modal
+        function SubscriptionModal({ subscription, onSave, onClose }) {
+            const [formData, setFormData] = useState(subscription || {
+                name: '',
+                cost: '',
+                cycle: 'monthly',
+                category: 'entertainment',
+                renewalDate: new Date().toISOString().split('T')[0]
+            });
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!formData.name || !formData.cost) return;
+                
+                onSave({
+                    ...formData,
+                    id: formData.id || Date.now(),
+                    cost: parseFloat(formData.cost)
+                });
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                    <div className="glass-card rounded-2xl p-6 w-full max-w-md animate-fade-in">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-semibold text-gray-800">
+                                {subscription ? 'Edit Subscription' : 'Add Subscription'}
+                            </h2>
+                            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+                        </div>
+                        
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Service Name</label>
+                                <input
+                                    type="text"
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                    className="w-full px-4 py-3 rounded-lg border border-gray-200 input-focus focus:outline-none"
+                                    placeholder="e.g., Netflix"
+                                    required
+                                />
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Cost ($)</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={formData.cost}
+                                        onChange={(e) => setFormData({...formData, cost: e.target.value})}
+                                        className="w-full px-4 py-3 rounded-lg border border-gray-200 input-focus focus:outline-none"
+                                        placeholder="9.99"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Billing Cycle</label>
+                                    <select
+                                        value={formData.cycle}
+                                        onChange={(e) => setFormData({...formData, cycle: e.target.value})}
+                                        className="w-full px-4 py-3 rounded-lg border border-gray-200 input-focus focus:outline-none bg-white"
+                                    >
+                                        <option value="monthly">Monthly</option>
+                                        <option value="yearly">Yearly</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                                <select
+                                    value={formData.category}
+                                    onChange={(e) => setFormData({...formData, category: e.target.value})}
+                                    className="w-full px-4 py-3 rounded-lg border border-gray-200 input-focus focus:outline-none bg-white"
+                                >
+                                    {Object.entries(CATEGORIES).map(([key, cat]) => (
+                                        <option key={key} value={key}>{cat.icon} {cat.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Next Renewal Date</label>
+                                <input
+                                    type="date"
+                                    value={formData.renewalDate}
+                                    onChange={(e) => setFormData({...formData, renewalDate: e.target.value})}
+                                    className="w-full px-4 py-3 rounded-lg border border-gray-200 input-focus focus:outline-none"
+                                    required
+                                />
+                            </div>
+                            
+                            <div className="flex gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="flex-1 px-4 py-3 rounded-lg border border-gray-200 text-gray-600 font-medium hover:bg-gray-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 btn-primary text-white font-semibold py-3 rounded-lg"
+                                >
+                                    {subscription ? 'Save Changes' : 'Add Subscription'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        // Dashboard Component
+        function Dashboard({ user, onLogout }) {
+            const [subscriptions, setSubscriptions] = useState(() => {
+                const saved = localStorage.getItem('subsentry_subscriptions');
+                return saved ? JSON.parse(saved) : SAMPLE_SUBSCRIPTIONS;
+            });
+            const [showModal, setShowModal] = useState(false);
+            const [editingSub, setEditingSub] = useState(null);
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
+
+            useEffect(() => {
+                localStorage.setItem('subsentry_subscriptions', JSON.stringify(subscriptions));
+            }, [subscriptions]);
+
+            // Calculations
+            const stats = useMemo(() => {
+                let monthlyTotal = 0;
+                subscriptions.forEach(sub => {
+                    if (sub.cycle === 'monthly') {
+                        monthlyTotal += sub.cost;
+                    } else {
+                        monthlyTotal += sub.cost / 12;
+                    }
+                });
+
+                const categoryTotals = {};
+                subscriptions.forEach(sub => {
+                    const monthlyCost = sub.cycle === 'monthly' ? sub.cost : sub.cost / 12;
+                    categoryTotals[sub.category] = (categoryTotals[sub.category] || 0) + monthlyCost;
+                });
+
+                const today = new Date();
+                const upcoming = subscriptions
+                    .filter(sub => {
+                        const renewalDate = new Date(sub.renewalDate);
+                        const diffDays = Math.ceil((renewalDate - today) / (1000 * 60 * 60 * 24));
+                        return diffDays >= 0 && diffDays <= 7;
+                    })
+                    .sort((a, b) => new Date(a.renewalDate) - new Date(b.renewalDate));
+
+                return {
+                    monthlyTotal,
+                    annualTotal: monthlyTotal * 12,
+                    count: subscriptions.length,
+                    categoryTotals,
+                    upcoming
+                };
+            }, [subscriptions]);
+
+            const handleSave = (sub) => {
+                if (editingSub) {
+                    setSubscriptions(subs => subs.map(s => s.id === sub.id ? sub : s));
+                } else {
+                    setSubscriptions(subs => [...subs, sub]);
+                }
+                setShowModal(false);
+                setEditingSub(null);
+            };
+
+            const handleDelete = (id) => {
+                setSubscriptions(subs => subs.filter(s => s.id !== id));
+                setShowDeleteConfirm(null);
+            };
+
+            const getDaysUntil = (date) => {
+                const today = new Date();
+                const renewal = new Date(date);
+                return Math.ceil((renewal - today) / (1000 * 60 * 60 * 24));
+            };
+
+            return (
+                <div className="min-h-screen">
+                    {/* Navbar */}
+                    <nav className="glass-card border-b border-white/50 sticky top-0 z-40">
+                        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+                            <h1 className="font-display text-2xl font-bold gradient-text">SubSentry</h1>
+                            <div className="flex items-center gap-4">
+                                <div className="hidden sm:flex items-center gap-2 text-gray-600">
+                                    <span className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-medium">
+                                        {user.name.charAt(0).toUpperCase()}
+                                    </span>
+                                    <span className="text-sm font-medium">{user.name}</span>
+                                </div>
+                                <button
+                                    onClick={onLogout}
+                                    className="text-sm text-gray-500 hover:text-gray-700 font-medium"
+                                >
+                                    Logout
+                                </button>
+                            </div>
+                        </div>
+                    </nav>
+
+                    <div className="max-w-6xl mx-auto px-4 py-6">
+                        {/* Tabs */}
+                        <div className="flex gap-2 mb-6">
+                            <button
+                                onClick={() => setActiveTab('dashboard')}
+                                className={`px-4 py-2 rounded-lg font-medium transition ${
+                                    activeTab === 'dashboard' 
+                                        ? 'bg-primary-600 text-white' 
+                                        : 'bg-white text-gray-600 hover:bg-gray-50'
+                                }`}
+                            >
+                                📊 Dashboard
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('subscriptions')}
+                                className={`px-4 py-2 rounded-lg font-medium transition ${
+                                    activeTab === 'subscriptions' 
+                                        ? 'bg-primary-600 text-white' 
+                                        : 'bg-white text-gray-600 hover:bg-gray-50'
+                                }`}
+                            >
+                                📋 All Subscriptions
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('alerts')}
+                                className={`px-4 py-2 rounded-lg font-medium transition relative ${
+                                    activeTab === 'alerts' 
+                                        ? 'bg-primary-600 text-white' 
+                                        : 'bg-white text-gray-600 hover:bg-gray-50'
+                                }`}
+                            >
+                                🔔 Alerts
+                                {stats.upcoming.length > 0 && (
+                                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center notification-badge">
+                                        {stats.upcoming.length}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
+
+                        {/* Dashboard View */}
+                        {activeTab === 'dashboard' && (
+                            <div className="space-y-6 animate-fade-in">
+                                {/* Stats Cards */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="glass-card rounded-2xl p-6 stat-card">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center text-xl">💰</div>
+                                            <span className="text-gray-500 text-sm font-medium">Monthly Spending</span>
+                                        </div>
+                                        <p className="text-3xl font-bold text-gray-800">${stats.monthlyTotal.toFixed(2)}</p>
+                                    </div>
+                                    
+                                    <div className="glass-card rounded-2xl p-6 stat-card">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center text-xl">📅</div>
+                                            <span className="text-gray-500 text-sm font-medium">Annual Projection</span>
+                                        </div>
+                                        <p className="text-3xl font-bold text-gray-800">${stats.annualTotal.toFixed(2)}</p>
+                                    </div>
+                                    
+                                    <div className="glass-card rounded-2xl p-6 stat-card">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center text-xl">📦</div>
+                                            <span className="text-gray-500 text-sm font-medium">Active Subscriptions</span>
+                                        </div>
+                                        <p className="text-3xl font-bold text-gray-800">{stats.count}</p>
+                                    </div>
+                                </div>
+
+                                {/* Category Breakdown */}
+                                <div className="glass-card rounded-2xl p-6">
+                                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Spending by Category</h3>
+                                    <div className="space-y-3">
+                                        {Object.entries(stats.categoryTotals)
+                                            .sort((a, b) => b[1] - a[1])
+                                            .map(([category, amount]) => {
+                                                const percentage = (amount / stats.monthlyTotal) * 100;
+                                                const cat = CATEGORIES[category];
+                                                return (
+                                                    <div key={category}>
+                                                        <div className="flex justify-between items-center mb-1">
+                                                            <span className="text-sm font-medium text-gray-600">
+                                                                {cat.icon} {cat.name}
+                                                            </span>
+                                                            <span className="text-sm font-semibold text-gray-800">
+                                                                ${amount.toFixed(2)}/mo
+                                                            </span>
+                                                        </div>
+                                                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                            <div 
+                                                                className={`h-full ${cat.color} rounded-full transition-all duration-500`}
+                                                                style={{ width: `${percentage}%` }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                    </div>
+                                </div>
+
+                                {/* Upcoming Renewals */}
+                                {stats.upcoming.length > 0 && (
+                                    <div className="glass-card rounded-2xl p-6 border-l-4 border-warning">
+                                        <h3 className="text-lg font-semibold text-gray-800 mb-4">⚠️ Upcoming Renewals (Next 7 Days)</h3>
+                                        <div className="space-y-3">
+                                            {stats.upcoming.map(sub => {
+                                                const days = getDaysUntil(sub.renewalDate);
+                                                return (
+                                                    <div key={sub.id} className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-xl">{CATEGORIES[sub.category].icon}</span>
+                                                            <div>
+                                                                <p className="font-medium text-gray-800">{sub.name}</p>
+                                                                <p className="text-sm text-gray-500">
+                                                                    {days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : `In ${days} days`}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <span className="font-semibold text-gray-800">${sub.cost.toFixed(2)}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Quick Add Button */}
+                                <button
+                                    onClick={() => { setEditingSub(null); setShowModal(true); }}
+                                    className="w-full btn-primary text-white font-semibold py-4 rounded-xl flex items-center justify-center gap-2"
+                                >
+                                    <span className="text-xl">+</span> Add New Subscription
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Subscriptions List View */}
+                        {activeTab === 'subscriptions' && (
+                            <div className="space-y-4 animate-fade-in">
+                                <div className="flex justify-between items-center">
+                                    <h2 className="text-xl font-semibold text-gray-800">All Subscriptions</h2>
+                                    <button
+                                        onClick={() => { setEditingSub(null); setShowModal(true); }}
+                                        className="btn-primary text-white font-medium px-4 py-2 rounded-lg flex items-center gap-2"
+                                    >
+                                        <span>+</span> Add New
+                                    </button>
+                                </div>
+
+                                <div className="glass-card rounded-2xl overflow-hidden">
+                                    {subscriptions.length === 0 ? (
+                                        <div className="p-8 text-center">
+                                            <p className="text-gray-500">No subscriptions yet. Add your first one!</p>
+                                        </div>
+                                    ) : (
+                                        <div className="divide-y divide-gray-100">
+                                            {subscriptions.map(sub => {
+                                                const days = getDaysUntil(sub.renewalDate);
+                                                const isUpcoming = days >= 0 && days <= 7;
+                                                return (
+                                                    <div key={sub.id} className="subscription-row p-4 flex items-center justify-between">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className={`w-12 h-12 rounded-xl ${CATEGORIES[sub.category].color} flex items-center justify-center text-2xl text-white`}>
+                                                                {CATEGORIES[sub.category].icon}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-semibold text-gray-800">{sub.name}</p>
+                                                                <p className="text-sm text-gray-500">
+                                                                    {CATEGORIES[sub.category].name} • {sub.cycle === 'monthly' ? 'Monthly' : 'Yearly'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="text-right">
+                                                                <p className="font-semibold text-gray-800">${sub.cost.toFixed(2)}</p>
+                                                                <p className={`text-sm ${isUpcoming ? 'text-orange-500 font-medium' : 'text-gray-500'}`}>
+                                                                    {isUpcoming && '⚠️ '}
+                                                                    {days < 0 ? 'Overdue' : days === 0 ? 'Today' : `${days} days`}
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex gap-2">
+                                                                <button
+                                                                    onClick={() => { setEditingSub(sub); setShowModal(true); }}
+                                                                    className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600"
+                                                                >
+                                                                    ✏️
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setShowDeleteConfirm(sub.id)}
+                                                                    className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500"
+                                                                >
+                                                                    🗑️
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Alerts View */}
+                        {activeTab === 'alerts' && (
+                            <div className="space-y-4 animate-fade-in">
+                                <h2 className="text-xl font-semibold text-gray-800">Renewal Alerts</h2>
+                                
+                                <div className="glass-card rounded-2xl p-6">
+                                    <h3 className="font-medium text-gray-700 mb-4">🔔 Renewing in Next 7 Days</h3>
+                                    {stats.upcoming.length === 0 ? (
+                                        <p className="text-gray-500 text-center py-4">No upcoming renewals in the next 7 days. You're all set! ✨</p>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {stats.upcoming.map(sub => {
+                                                const days = getDaysUntil(sub.renewalDate);
+                                                return (
+                                                    <div key={sub.id} className="flex items-center justify-between p-4 bg-orange-50 rounded-xl">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center text-2xl">
+                                                                {CATEGORIES[sub.category].icon}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-semibold text-gray-800">{sub.name}</p>
+                                                                <p className="text-sm text-orange-600">
+                                                                    Renews {days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-lg font-bold text-gray-800">${sub.cost.toFixed(2)}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="glass-card rounded-2xl p-6">
+                                    <h3 className="font-medium text-gray-700 mb-4">📅 Renewing in Next 30 Days</h3>
+                                    {(() => {
+                                        const next30 = subscriptions.filter(sub => {
+                                            const days = getDaysUntil(sub.renewalDate);
+                                            return days > 7 && days <= 30;
+                                        }).sort((a, b) => new Date(a.renewalDate) - new Date(b.renewalDate));
+                                        
+                                        if (next30.length === 0) {
+                                            return <p className="text-gray-500 text-center py-4">No renewals in the next 8-30 days.</p>;
+                                        }
+                                        
+                                        return (
+                                            <div className="space-y-3">
+                                                {next30.map(sub => (
+                                                    <div key={sub.id} className="flex items-center justify-between p-4 bg-blue-50 rounded-xl">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-2xl">
+                                                                {CATEGORIES[sub.category].icon}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-semibold text-gray-800">{sub.name}</p>
+                                                                <p className="text-sm text-blue-600">
+                                                                    Renews in {getDaysUntil(sub.renewalDate)} days
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-lg font-bold text-gray-800">${sub.cost.toFixed(2)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Modals */}
+                    {showModal && (
+                        <SubscriptionModal
+                            subscription={editingSub}
+                            onSave={handleSave}
+                            onClose={() => { setShowModal(false); setEditingSub(null); }}
+                        />
+                    )}
+
+                    {showDeleteConfirm && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                            <div className="glass-card rounded-2xl p-6 w-full max-w-sm animate-fade-in">
+                                <h3 className="text-lg font-semibold text-gray-800 mb-2">Delete Subscription?</h3>
+                                <p className="text-gray-600 mb-6">This action cannot be undone.</p>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setShowDeleteConfirm(null)}
+                                        className="flex-1 px-4 py-3 rounded-lg border border-gray-200 text-gray-600 font-medium hover:bg-gray-50"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={() => handleDelete(showDeleteConfirm)}
+                                        className="flex-1 px-4 py-3 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600"
+                                    >
+                                        Delete
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Main App
+        function App() {
+            const [user, setUser] = useState(() => {
+                const saved = localStorage.getItem('subsentry_user');
+                return saved ? JSON.parse(saved) : null;
+            });
+
+            const handleLogout = () => {
+                localStorage.removeItem('subsentry_user');
+                setUser(null);
+            };
+
+            return user ? (
+                <Dashboard user={user} onLogout={handleLogout} />
+            ) : (
+                <AuthScreen onLogin={setUser} />
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
